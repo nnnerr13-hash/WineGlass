@@ -21,9 +21,7 @@ jobs:
 
       - name: Build blink for iPhone
         run: |
-          cd /tmp/blink
-          cp config.h.ios config.h
-
+          cd /tmp/blink                                                                                                          
           ./configure \
             CC="$(xcrun --sdk iphoneos -f clang)" \
             AR="$(xcrun --sdk iphoneos -f ar)" \
