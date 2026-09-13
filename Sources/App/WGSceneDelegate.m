@@ -1,4 +1,5 @@
 #import "WGSceneDelegate.h"
+#import "WGConsoleOverlay.h"
 #import <Metal/Metal.h>
 #import <GameController/GameController.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -10,8 +11,8 @@
 #include <unistd.h>
 
 @implementation WGSceneDelegate {
+    WGConsoleOverlay *_consoleOverlay;
     CADisplayLink *_displayLink;
-    id<MTLDevice> _device;
     id<MTLCommandQueue> _commandQueue;
     WGEngine *_engine;
     UIButton *_loadButton;
@@ -77,13 +78,34 @@
     else if ([_device supportsFamily:MTLGPUFamilyApple5]) gpuFamily = 5;
     WG_LOGI("App", "GPU family: Apple %d", gpuFamily);
 }
+static void WGConsoleLogCallback(WGLogLevel level,
+                                 const char *tag,
+                                 const char *message,
+                                 void *userdata)
+{
+    WGConsoleOverlay *overlay = (__bridge WGConsoleOverlay *)userdata;
+    if (!overlay) return;
 
-- (void)createConsole {
-    // On-screen log overlay disabled: logs still go to stderr (visible in the
-    // Xcode/device console on the computer), and skipping the per-line
-    // main-queue dispatch keeps the UI thread free for rendering.
-    WG_LOGI("App", "WineGlass Translation Engine for iOS (logs -> console)");
+    NSString *text = message
+        ? [NSString stringWithUTF8String:message]
+        : @"";
+dispatch_async(dispatch_get_main_queue(), ^{
+        [overlay appendLog:text level:level];
+    });
 }
+ 
+- (void)createConsole {
+    CGRect bounds = self.window.bounds;
+
+    _consoleOverlay = [[WGConsoleOverlay alloc]
+        initWithFrame:CGRectMake(10, 80,
+                                 bounds.size.width - 20,
+                                 bounds.size.height * 0.45)];
+
+    [self.window addSubview:_consoleOverlay];
+wg_log_set_callback(WGConsoleLogCallback,
+                        (__bridge void *)_consoleOverlay);
+    WG_LOGI("App", "On-screen console enabled");}
 
 - (void)createLoadButton {
     _loadButton = [UIButton buttonWithType:UIButtonTypeSystem];
