@@ -1,0 +1,93 @@
+name: Build WineGlass iOS
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout WineGlass
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install xcodegen make
+
+      - name: Download blink source
+        run: |
+          git clone https://github.com/jart/blink.git /tmp/blink
+
+      - name: Build blink for iPhone
+        run: |
+          cd /tmp/blink
+          cp config.h.ios config.h
+
+          ./configure \
+            CC="$(xcrun --sdk iphoneos -f clang)" \
+            AR="$(xcrun --sdk iphoneos -f ar)" \
+            CFLAGS="-g -O2 -arch arm64 -isysroot $(xcrun --sdk iphoneos --show-sdk-path) -miphoneos-version-min=17.0" \
+            --disable-threads \
+            --disable-sockets \
+            --disable-jit
+
+          gmake -j$(sysctl -n hw.ncpu) o//blink/blink.a
+
+          mkdir -p "$GITHUB_WORKSPACE/Vendor/blink/lib"
+          cp o//blink/blink.a "$GITHUB_WORKSPACE/Vendor/blink/lib/blink.a"
+
+      - name: Build WineGlass blink bridge
+        run: |
+          cd /tmp/blink
+
+          "$(xcrun --sdk iphoneos -f clang)" \
+            -c -std=c11 -g -O2 -arch arm64 \
+            -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -miphoneos-version-min=17.0 \
+            -D_FILE_OFFSET_BITS=64 \
+            -D_DARWIN_C_SOURCE \
+            -DTARGET_OS_IPHONE=1 \
+            -isystem "$(xcrun --sdk iphoneos --show-sdk-path)/usr/include" \
+            -I. \
+            -include config.h \
+            "$GITHUB_WORKSPACE/Vendor/blink/wg_blink_impl.c" \
+            -o "$GITHUB_WORKSPACE/Vendor/blink/lib/wg_blink_impl.o"
+
+      - name: Generate Xcode project
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          xcodegen generate
+
+      - name: Build WineGlass
+        run: |
+          cd "$GITHUB_WORKSPACE"
+
+          xcodebuild \
+            -project WineGlass.xcodeproj \
+            -scheme WineGlass \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM="" \
+            clean build
+
+      - name: Create unsigned IPA
+        run: |
+          APP=$(find ~/Library/Developer/Xcode/DerivedData \
+            -type d -name "WineGlass.app" | head -1)
+
+          echo "Found app: $APP"
+
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+
+          zip -r WineGlass-unsigned.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: WineGlass-unsigned-IPA
+          path: WineGlass-unsigned.ipa
