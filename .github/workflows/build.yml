@@ -13,8 +13,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install xcodegen make
-
+           brew install xcodegen make flock
       - name: Download blink source
         run: |
           git clone https://github.com/jart/blink.git /tmp/blink
