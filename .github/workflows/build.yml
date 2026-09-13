@@ -14,10 +14,21 @@ jobs:
       - name: Install dependencies
         run: |
            brew install xcodegen make flock
-      - name: Download blink source
+      - name: Find compatible blink revision
         run: |
           git clone https://github.com/jart/blink.git /tmp/blink
-
+          cd /tmp/blink
+          echo "=== config.h.ios history ==="
+          git log --all --full-history --oneline -- config.h.ios || true
+          echo "=== revisions containing config.h.ios ==="
+          git rev-list --all | while read c; do
+            if git cat-file -e "$c:config.h.ios" 2>/dev/null; then
+              echo "$c"
+              break
+            fi
+          done
+          echo "=== STOP HERE FOR REVISION CHECK ==="
+          exit 1
       - name: Build blink for iPhone
         run: |
           cd /tmp/blink                                                                                                          
